@@ -1,3 +1,3 @@
-var posts=["2025/11/28/hello-world/","2025/12/06/FPGA相关知识点0/"];function toRandomPost(){
+var posts=["2025/11/28/hello-world/","2025/12/06/FPGA相关知识点0/","2025/12/09/FPGA相关知识点1-generate语法/"];function toRandomPost(){
     pjax.loadUrl('/'+posts[Math.floor(Math.random() * posts.length)]);
   };
