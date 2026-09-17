@@ -1,0 +1,766 @@
+<!DOCTYPE html><html lang="zh-CN" data-theme="dark"><head><meta charset="UTF-8"><meta http-equiv="X-UA-Compatible" content="IE=edge"><meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no"><title>性能剖析 | ub-w Blog</title><meta name="keywords" content="cuda"><meta name="author" content="ub-w"><meta name="copyright" content="ub-w"><meta name="format-detection" content="telephone=no"><meta name="theme-color" content="#18171d"><meta name="mobile-web-app-capable" content="yes"><meta name="apple-touch-fullscreen" content="yes"><meta name="apple-mobile-web-app-title" content="性能剖析"><meta name="application-name" content="性能剖析"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-status-bar-style" content="#18171d"><meta property="og:type" content="article"><meta property="og:title" content="性能剖析"><meta property="og:url" content="http://example.com/2026/09/16/LLM/%E6%80%A7%E8%83%BD%E5%89%96%E6%9E%90/index.html"><meta property="og:site_name" content="ub-w Blog"><meta property="og:description" content="性能剖析性能优化之前必须先进行性能剖析（profiling）。剖析不是收集越多指标越好，而是用证据回答：程序哪里慢、哪个 kernel 重要、它为什么慢，以及应该优化什么。 一、性能剖析流程   问题 查看内容 现代工具    时间花在哪里？ 时间线、CPU↔GPU 数据复制、Kernel、同步等待"><meta property="og:locale" content="zh-CN"><meta property="og:image" content="https://raw.githubusercontent.com/ub-w/Article-images/main/Typora20251227165802126.jpg"><meta property="article:author" content="ub-w"><meta property="article:tag"><meta name="twitter:card" content="summary"><meta name="twitter:image" content="https://raw.githubusercontent.com/ub-w/Article-images/main/Typora20251227165802126.jpg"><meta name="description" content="性能剖析性能优化之前必须先进行性能剖析（profiling）。剖析不是收集越多指标越好，而是用证据回答：程序哪里慢、哪个 kernel 重要、它为什么慢，以及应该优化什么。 一、性能剖析流程   问题 查看内容 现代工具    时间花在哪里？ 时间线、CPU↔GPU 数据复制、Kernel、同步等待"><link rel="shortcut icon" href="/favicon.ico"><link rel="canonical" href="http://example.com/2026/09/16/LLM/%E6%80%A7%E8%83%BD%E5%89%96%E6%9E%90/"><link rel="preconnect" href="//cdn.cbd.int"/><meta name="google-site-verification" content="xxx"/><meta name="baidu-site-verification" content="code-xxx"/><meta name="msvalidate.01" content="xxx"/><link rel="stylesheet" href="/css/index.css"><link rel="stylesheet" href="https://cdn.cbd.int/node-snackbar@0.1.16/dist/snackbar.min.css" media="print" onload="this.media='all'"><link rel="stylesheet" href="https://cdn.cbd.int/@fancyapps/ui@5.0.28/dist/fancybox/fancybox.css" media="print" onload="this.media='all'"><script>const GLOBAL_CONFIG = {
+  linkPageTop: undefined,
+  peoplecanvas: {"enable":true,"img":"https://raw.githubusercontent.com/ub-w/Article-images/main/Typora20251227215006079.png"},
+  postHeadAiDescription: undefined,
+  diytitle: undefined,
+  LA51: undefined,
+  greetingBox: undefined,
+  twikooEnvId: '',
+  commentBarrageConfig:undefined,
+  music_page_default: "nav_music",
+  root: '/',
+  preloader: {"source":3},
+  friends_vue_info: undefined,
+  navMusic: true,
+  mainTone: undefined,
+  authorStatus: undefined,
+  algolia: undefined,
+  localSearch: undefined,
+  translate: {"defaultEncoding":2,"translateDelay":0,"msgToTraditionalChinese":"繁","msgToSimplifiedChinese":"简","rightMenuMsgToTraditionalChinese":"转为繁体","rightMenuMsgToSimplifiedChinese":"转为简体"},
+  noticeOutdate: undefined,
+  highlight: {"plugin":"highlight.js","highlightCopy":true,"highlightLang":true,"highlightHeightLimit":330},
+  copy: {
+    success: '复制成功',
+    error: '复制错误',
+    noSupport: '浏览器不支持'
+  },
+  relativeDate: {
+    homepage: false,
+    simplehomepage: false,
+    post: false
+  },
+  runtime: '天',
+  date_suffix: {
+    just: '刚刚',
+    min: '分钟前',
+    hour: '小时前',
+    day: '天前',
+    month: '个月前'
+  },
+  copyright: {"copy":true,"copyrightEbable":false,"limitCount":50,"languages":{"author":"作者: ub-w","link":"链接: ","source":"来源: ub-w Blog","info":"著作权归作者所有。商业转载请联系作者获得授权，非商业转载请注明出处。","copySuccess":"复制成功，复制和转载请标注本文地址"}},
+  lightbox: 'fancybox',
+  Snackbar: {"chs_to_cht":"你已切换为繁体","cht_to_chs":"你已切换为简体","day_to_night":"你已切换为深色模式","night_to_day":"你已切换为浅色模式","bgLight":"#425AEF","bgDark":"#1f1f1f","position":"top-center"},
+  source: {
+    justifiedGallery: {
+      js: 'https://cdn.cbd.int/flickr-justified-gallery@2.1.2/dist/fjGallery.min.js',
+      css: 'https://cdn.cbd.int/flickr-justified-gallery@2.1.2/dist/fjGallery.css'
+    }
+  },
+  isPhotoFigcaption: false,
+  islazyload: true,
+  isAnchor: false,
+  shortcutKey: undefined,
+  autoDarkmode: false
+}</script><script id="config-diff">var GLOBAL_CONFIG_SITE = {
+  configTitle: 'ub-w Blog',
+  title: '性能剖析',
+  postAI: '',
+  pageFillDescription: '性能剖析, 一、性能剖析流程, 二、优化前先正确测量, 三、应用级分析：时间花在哪里, 1.用 Timeline 查看工作如何排列, 2.找到真正重要的 kernel, 四、Kernel 级分析：为什么慢, 1.查看启动配置与资源用量, 2.分析 Occupancy 及其限制因素, 3.判断 Compute、Bandwidth 或 Latency Bound, 4.Memory Bandwidth 与 Memory Statistics, 5.Compute Resource Utilization, 6.Latency Analysis, 五、从分析到优化验证, 1.应用层, 2.Kernel 层, 3.优化验证, 六、旧工具附录, 七、总结, 参考资料性能剖析性能优化之前必须先进行性能剖析剖析不是收集越多指标越好而是用证据回答程序哪里慢哪个重要它为什么慢以及应该优化什么一性能剖析流程问题查看内容现代工具时间花在哪里时间线数据复制同步等待哪个最重要总耗时调用次数单次耗时受什么限制哪项资源有问题执行管线为什么停顿正确测量优化前的性能查看应用时间线找到性能关键判断计算带宽还是延迟受限检查对应资源和源码修改后重新测量分析分为两个层次查看整个应用回答时间花在哪里深入单个回答为什么慢二优化前先正确测量优化代码之前要先完成两件事明确测量范围测整个程序的端到端时间还是只测某个的执行时间保存优化前的数据把当前版本的耗时和测试条件记录下来作为之后比较的起点这个优化前的比较起点就叫做性能基线例如输入规模完整程序耗时优化后必须使用相同的输入规模和测量范围重新测试才能判断修改是否真的有效之所以强调正确测量是因为操作可能异步执行首次运行还可能包含初始化开销单次结果也可能存在波动下面使用一个完整可独立理解的向量加法作为贯穿示例完整执行过程包括内存分配执行内存释放其中表示内存复制到显存表示显存复制回内存因此需要区分只计算的时间完成整项任务的端到端时间变快不代表端到端时间一定明显下降的异步性通常是异步的调用返回时可能还没有执行完如果用计时器需要在测量边界正确同步测量纯工作时通常优先使用正式还应进行预热多次重复并报告稳定统计值三应用级分析时间花在哪里用查看工作如何排列时间线按照发生时间展示调用数据复制和它首先回答的不是某个为什么慢而是整个程序的时间到底花在了哪里这张图可以分成两部分看上半部分横轴是时间不同轨道展示和是否串行或重叠下半部分工具根据时间线给出提示例如复制与计算重叠较少计算利用率较低这些提示只是后续调查方向不能脱离程序依赖关系直接当作优化结论时间线可以看到何时调用何时执行何时开始和结束不同是否并发和何时等待数据传输是否与计算重叠对于前面的同步向量加法示例一种典型时间线是所有操作串行执行没有低重叠不一定就是若只有一批数据且必须等待输入输出必须等待天然存在依赖要形成流水线通常需要把数据拆成多个并结合和多个非默认更优先的问题通常是能否让数据持续驻留在从根本上减少往返找到真正重要的会按执行时间和调用情况排列阅读时要区分单次最慢的累计时间最多的整个应用真正的瓶颈如果是一次运行中唯一的它自然会在排名中位列第一但还必须回到应用时间线检查它在端到端时间中的占比若它只占整体时间的排名第一也不意味着应该优先微调它这体现了定律整体加速效果受被优化部分在总时间中的占比限制如果一个只占总时间的即使把它的耗时完全消除整体时间也最多减少约四级分析为什么慢查看启动配置与资源用量课程使用的界面如下先在中间的列表或上方时间线中选中然后查看右侧的面板图中右侧面板分成两类信息启动信息和资源信息和常见字段含义如下属性含义在上的执行时间所属中的数量每个的线程数量每线程寄存器用量每共享内存用量运行时实际平均根据资源计算的理论上限以每个个线程的向量加法为例可以直接推导出大小为但要看编译结果要靠实际运行测量不能从源码或课堂中的一次结果直接推广该未声明以本次编译报告为准以本次报告为准分析及其限制因素是每个上活跃数相对于硬件最大活跃数的比例这张图不是只给出一个百分比还分别列出了当前每个的线程和数每线程每的寄存器用量每的共享内存用量线程寄存器共享内存和数上限分别允许多少活跃真正要找的是哪一项资源先达到上限因为它决定一个最终能同时驻留多少个会分别计算线程寄存器共享内存和硬件上限允许多少驻留最终取最小值线程允许的寄存器允许的共享内存允许的硬件允许的取最小值实际理论驻留数假设目标的一个最多驻留个线程个并且其他资源不构成限制当前有个线程即个则在这些明确的假设下理论可以达到实际设备限制和编译后的寄存器用量必须从设备资料与报告获得大小的影响每的数每可驻留数寄存器和共享内存的分配调度粒度与尾部效应某些算法的大小和数据复用越大不代表越高通常测试等的整数倍并以实际运行时间判断如果一个只有个线程它正好是一个但在每最大驻留数有限的设备上可能因为数上限而无法填满全部例如最多驻留个个的只能得到个驻留即最高约高也不保证高性能只要活跃已足够隐藏延迟继续提高可能没有收益判断或类型常见表现后续检查某类计算管线利用率高指令构成功能单元利用率高事务带宽访存模式计算和带宽都不高但频繁等待依赖图中的计算利用率明显低于利用率因此工具把这个判断为更可能受到显存带宽限制这个结论只适用于图中这次运行换输入规模或后需要重新测量向量加法的算术强度很低因此在数据规模足够大访存规整且执行开销被摊薄时通常容易受显存带宽限制是否已经达到该状态仍应由实际数据确认与可以沿内存层次查看在这张报告中应当按内存层次逐级看带宽和事务和图中的利用率最高所以后续应重点检查显存流量是否必要访问是否合并以及数据是否能够复用常见数据包括读写字节数各层带宽和利用率和流量可以先用下面的简化关系理解这些统计量执行了一条或指令这条指令产生的逻辑访存请求内存层次为了满足请求而进行的实际数据传输这些实际搬运的数据量地址越分散一条访存指令通常会被拆成越多因此实际搬运的数据可能明显多于程序真正使用的数据如何阅读事务数明显高于理论需要可能存在非合并访问或无效字节流量很大缓存命中低可能缺少数据复用利用率接近上限可能受显存带宽限制出现大量流量可能有寄存器溢出或较大的线程私有数组向量加法为什么容易带宽受限每个元素执行读取读取写入计算次加法算术强度大约是计算很少数据移动很多所以通常受显存带宽限制展开使用验证理论数据量与指令数假设理论读取量为理论写入量为如果中与间的流量也接近读取写入才可以据此判断没有明显额外流量总数为每个执行两条和一条所以大约执行条内存指令即约条级内存指令如果报告值与之接近而且实际传输字节接近理论值就能为访存模式比较规整提供证据对于这种单独的流式向量加法共享内存没有数据复用价值更有效的方向是算子融合降低数据精度和避免中间张量反复写回显存可以查看不同功能单元的利用率图中上半部分表示算术和控制流等功能单元的利用程度下半部分表示不同类型指令在已执行指令中的占比两张图需要结合阅读指令占比高不等于对应执行管线已经成为瓶颈还可以查看指令构成和线程用来分析某类执行管线是否饱和整数索引计算是否过多是否占比很高控制流和分歧是否明显是否执行了大量无效指令需要注意指令数量占比不等于耗时占比某类指令很多不代表它一定是性能瓶颈还要结合管线利用率和情况当当前不能发射下一条指令时会统计这张图表示采样到的停顿主要来自也就是下一条指令依赖尚未返回的内存数据饼图只能告诉我们等待类型的占比还需要结合吞吐量和具体源码判断它是否是主要瓶颈含义等待返回的数据等待前一条计算产生结果等待取指令已就绪但调度器选择了其他内存请求队列或管线压力过高所需执行管线正在忙等待等同步操作等待相应内存路径的数据不一定是坏事它可能说明调度器拥有很多可执行指标必须与吞吐量和源码一起分析不能看到占比高就直接认定为瓶颈或现代的可以将定位到源码或指令五从分析到优化验证应用层端到端时间是多少同步分别占多少和是否存在大段空闲复制和计算是否可能重叠层哪些的累计耗时最高是还是寄存器和共享内存配置如何被什么资源限制内存事务和实际字节是否符合算法预期哪种执行管线利用率最高主要因为什么停顿优化验证每次只修改一个主要因素保留优化前的性能基线验证数值正确性使用非运行重新测量检查瓶颈是否已经转移六旧工具附录和已被弃用并已从移除因此这里只保留它们来帮助阅读旧资料新的实验应迁移到工具移除信息可在中核对旧工具或界面现代工具主要用途时间摘要和汇总时间线与并发关系单个的硬件指标指令源码和定位展开阅读旧课程时需要的命令命令行摘要输出中的表示上实际发生的和表示调用所花的时间的时间通常表示正在等待此前提交的工作并不是执行了一个同名计算任务常见字段字段含义在同类活动总时间中的占比累计时间调用次数平均时间最短和最长时间活动或名称生成时间线与硬件指标报告用于寻找时间花在哪里用于分析为什么慢不等于硬件计数器数量有限收集大量时可能多次同一个此时采集期间的运行时间不能作为真实性能结果实际使用时应只收集与当前假设有关的指标并尽量限定或代码范围现代命令示例整体时间线单个深入分析也可能因此同样不能把运行时间当作正式七总结性能剖析首先建立可靠基线具有异步性计时必须处理同步边界用于分析整个应用的时间线先找出同步和等部分的耗时用于深入关键分析启动配置内存计算管线和排名必须结合端到端占比理解排名第一不等于值得优先优化判断瓶颈时先区分和再检查对应指标与源码用来解释行为用来比较性能优化后必须使用正常运行重新计时参考资料',
+  isPost: true,
+  isHome: false,
+  isHighlightShrink: false,
+  isToc: true,
+  postUpdate: '2026-09-17 19:33:17',
+  postMainColor: '',
+}</script><noscript><style type="text/css">
+  #nav {
+    opacity: 1
+  }
+  .justified-gallery img {
+    opacity: 1
+  }
+
+  #recent-posts time,
+  #post-meta time {
+    display: inline !important
+  }
+</style></noscript><script>(win=>{
+      win.saveToLocal = {
+        set: (key, value, ttl) => {
+          if (ttl === 0) return
+          const now = Date.now()
+          const expiry = now + ttl * 86400000
+          const item = {
+            value,
+            expiry
+          }
+          localStorage.setItem(key, JSON.stringify(item))
+        },
+      
+        get: key => {
+          const itemStr = localStorage.getItem(key)
+      
+          if (!itemStr) {
+            return undefined
+          }
+          const item = JSON.parse(itemStr)
+          const now = Date.now()
+      
+          if (now > item.expiry) {
+            localStorage.removeItem(key)
+            return undefined
+          }
+          return item.value
+        }
+      }
+    
+      win.getScript = (url, attr = {}) => new Promise((resolve, reject) => {
+        const script = document.createElement('script')
+        script.src = url
+        script.async = true
+        script.onerror = reject
+        script.onload = script.onreadystatechange = function() {
+          const loadState = this.readyState
+          if (loadState && loadState !== 'loaded' && loadState !== 'complete') return
+          script.onload = script.onreadystatechange = null
+          resolve()
+        }
+
+        Object.keys(attr).forEach(key => {
+          script.setAttribute(key, attr[key])
+        })
+
+        document.head.appendChild(script)
+      })
+    
+      win.getCSS = (url, id = false) => new Promise((resolve, reject) => {
+        const link = document.createElement('link')
+        link.rel = 'stylesheet'
+        link.href = url
+        if (id) link.id = id
+        link.onerror = reject
+        link.onload = link.onreadystatechange = function() {
+          const loadState = this.readyState
+          if (loadState && loadState !== 'loaded' && loadState !== 'complete') return
+          link.onload = link.onreadystatechange = null
+          resolve()
+        }
+        document.head.appendChild(link)
+      })
+    
+      win.activateDarkMode = () => {
+        document.documentElement.setAttribute('data-theme', 'dark')
+        if (document.querySelector('meta[name="theme-color"]') !== null) {
+          document.querySelector('meta[name="theme-color"]').setAttribute('content', '#18171d')
+        }
+      }
+      win.activateLightMode = () => {
+        document.documentElement.setAttribute('data-theme', 'light')
+        if (document.querySelector('meta[name="theme-color"]') !== null) {
+          document.querySelector('meta[name="theme-color"]').setAttribute('content', '#f7f9fe')
+        }
+      }
+      const t = saveToLocal.get('theme')
+    
+        if (t === 'dark') activateDarkMode()
+        else if (t === 'light') activateLightMode()
+      
+      const asideStatus = saveToLocal.get('aside-status')
+      if (asideStatus !== undefined) {
+        if (asideStatus === 'hide') {
+          document.documentElement.classList.add('hide-aside')
+        } else {
+          document.documentElement.classList.remove('hide-aside')
+        }
+      }
+    
+      const detectApple = () => {
+        if(/iPad|iPhone|iPod|Macintosh/.test(navigator.userAgent)){
+          document.documentElement.classList.add('apple')
+        }
+      }
+      detectApple()
+    })(window)</script><link rel="stylesheet" href="/css/custom.css" media="defer" onload="this.media='all'"><meta name="generator" content="Hexo 8.1.1"></head><body data-type="anzhiyu"><div id="web_bg"></div><div id="an_music_bg"></div><div id="loading-box" onclick="document.getElementById(&quot;loading-box&quot;).classList.add(&quot;loaded&quot;)"><div class="loading-bg"><img class="loading-img nolazyload" alt="加载头像" src="https://raw.githubusercontent.com/ub-w/Article-images/main/Typora20251227165802126.jpg"/><div class="loading-image-dot"></div></div></div><script>const preloader = {
+  endLoading: () => {
+    document.getElementById('loading-box').classList.add("loaded");
+  },
+  initLoading: () => {
+    document.getElementById('loading-box').classList.remove("loaded")
+  }
+}
+window.addEventListener('load',()=> { preloader.endLoading() })
+setTimeout(function(){preloader.endLoading();},10000)
+
+if (true) {
+  document.addEventListener('pjax:send', () => { preloader.initLoading() })
+  document.addEventListener('pjax:complete', () => { preloader.endLoading() })
+}</script><link rel="stylesheet" href="https://cdn.cbd.int/anzhiyu-theme-static@1.1.10/progress_bar/progress_bar.css"/><script async="async" src="https://cdn.cbd.int/pace-js@1.2.4/pace.min.js" data-pace-options="{ &quot;restartOnRequestAfter&quot;:false,&quot;eventLag&quot;:false}"></script><div class="post" id="body-wrap"><header class="post-bg" id="page-header"><nav id="nav"><div id="nav-group"><span id="blog_name"><a id="site-name" href="/" accesskey="h"><div class="title">ub-w Blog</div><i class="anzhiyufont anzhiyu-icon-house-chimney"></i></a></span><div class="mask-name-container"><div id="name-container"><a id="page-name" href="javascript:anzhiyu.scrollToDest(0, 500)">PAGE_NAME</a></div></div><div id="menus"></div><div id="nav-right"><div class="nav-button" id="randomPost_button"><a class="site-page" onclick="toRandomPost()" title="随机前往一个文章" href="javascript:void(0);"><i class="anzhiyufont anzhiyu-icon-dice"></i></a></div><input id="center-console" type="checkbox"/><label class="widget" for="center-console" title="中控台" onclick="anzhiyu.switchConsole();"><i class="left"></i><i class="widget center"></i><i class="widget right"></i></label><div id="console"><div class="console-card-group-reward"><ul class="reward-all console-card"><li class="reward-item"><a href="https://npm.elemecdn.com/anzhiyu-blog@1.1.6/img/post/common/qrcode-weichat.png" target="_blank"><img class="post-qr-code-img" alt="微信" src="https://npm.elemecdn.com/anzhiyu-blog@1.1.6/img/post/common/qrcode-weichat.png"/></a><div class="post-qr-code-desc">微信</div></li><li class="reward-item"><a href="https://npm.elemecdn.com/anzhiyu-blog@1.1.6/img/post/common/qrcode-alipay.png" target="_blank"><img class="post-qr-code-img" alt="支付宝" src="https://npm.elemecdn.com/anzhiyu-blog@1.1.6/img/post/common/qrcode-alipay.png"/></a><div class="post-qr-code-desc">支付宝</div></li></ul></div><div class="console-card-group"><div class="console-card-group-left"><div class="console-card" id="card-newest-comments"><div class="card-content"><div class="author-content-item-tips">互动</div><span class="author-content-item-title"> 最新评论</span></div><div class="aside-list"><span>正在加载中...</span></div></div></div><div class="console-card-group-right"><div class="console-card tags"><div class="card-content"><div class="author-content-item-tips">兴趣点</div><span class="author-content-item-title">寻找你感兴趣的领域</span><div class="card-tags"><div class="item-headline"></div><div class="card-tag-cloud"><a href="/tags/HDLbits/" style="font-size: 1.05rem;">HDLbits<sup>6</sup></a><a href="/tags/IC%E8%AE%BE%E8%AE%A1%E5%85%A5%E9%97%A8/" style="font-size: 1.05rem;">IC设计入门<sup>2</sup></a><a href="/tags/SystemVerilog%E9%AA%8C%E8%AF%81/" style="font-size: 1.05rem;">SystemVerilog验证<sup>6</sup></a><a href="/tags/cuda/" style="font-size: 1.05rem;">cuda<sup>6</sup></a><a href="/tags/leetcode/" style="font-size: 1.05rem;">leetcode<sup>1</sup></a><a href="/tags/%E5%9F%BA%E7%A1%80/" style="font-size: 1.05rem;">基础<sup>5</sup></a><a href="/tags/%E5%B7%A5%E5%85%B7/" style="font-size: 1.05rem;">工具<sup>2</sup></a></div></div><hr/></div></div><div class="console-card history"><div class="item-headline"><i class="anzhiyufont anzhiyu-icon-box-archiv"></i><span>文章</span></div><div class="card-archives"><div class="item-headline"><i class="anzhiyufont anzhiyu-icon-archive"></i><span>归档</span></div><ul class="card-archive-list"><li class="card-archive-list-item"><a class="card-archive-list-link" href="/archives/2026/09/"><span class="card-archive-list-date">九月 2026</span><div class="card-archive-list-count-group"><span class="card-archive-list-count">3</span><span>篇</span></div></a></li><li class="card-archive-list-item"><a class="card-archive-list-link" href="/archives/2026/07/"><span class="card-archive-list-date">七月 2026</span><div class="card-archive-list-count-group"><span class="card-archive-list-count">1</span><span>篇</span></div></a></li><li class="card-archive-list-item"><a class="card-archive-list-link" href="/archives/2026/06/"><span class="card-archive-list-date">六月 2026</span><div class="card-archive-list-count-group"><span class="card-archive-list-count">3</span><span>篇</span></div></a></li><li class="card-archive-list-item"><a class="card-archive-list-link" href="/archives/2026/05/"><span class="card-archive-list-date">五月 2026</span><div class="card-archive-list-count-group"><span class="card-archive-list-count">9</span><span>篇</span></div></a></li><li class="card-archive-list-item"><a class="card-archive-list-link" href="/archives/2026/04/"><span class="card-archive-list-date">四月 2026</span><div class="card-archive-list-count-group"><span class="card-archive-list-count">2</span><span>篇</span></div></a></li><li class="card-archive-list-item"><a class="card-archive-list-link" href="/archives/2026/03/"><span class="card-archive-list-date">三月 2026</span><div class="card-archive-list-count-group"><span class="card-archive-list-count">2</span><span>篇</span></div></a></li><li class="card-archive-list-item"><a class="card-archive-list-link" href="/archives/2025/12/"><span class="card-archive-list-date">十二月 2025</span><div class="card-archive-list-count-group"><span class="card-archive-list-count">2</span><span>篇</span></div></a></li><li class="card-archive-list-item"><a class="card-archive-list-link" href="/archives/2025/11/"><span class="card-archive-list-date">十一月 2025</span><div class="card-archive-list-count-group"><span class="card-archive-list-count">6</span><span>篇</span></div></a></li></ul></div><hr/></div></div></div><div class="button-group"><div class="console-btn-item"><a class="darkmode_switchbutton" title="显示模式切换" href="javascript:void(0);"><i class="anzhiyufont anzhiyu-icon-moon"></i></a></div><div class="console-btn-item" id="consoleHideAside" onclick="anzhiyu.hideAsideBtn()" title="边栏显示控制"><a class="asideSwitch"><i class="anzhiyufont anzhiyu-icon-arrows-left-right"></i></a></div><div class="console-btn-item" id="consoleMusic" onclick="anzhiyu.musicToggle()" title="音乐开关"><a class="music-switch"><i class="anzhiyufont anzhiyu-icon-music"></i></a></div></div><div class="console-mask" onclick="anzhiyu.hideConsole()" href="javascript:void(0);"></div></div><div class="nav-button" id="nav-totop"><a class="totopbtn" href="javascript:void(0);"><i class="anzhiyufont anzhiyu-icon-arrow-up"></i><span id="percent" onclick="anzhiyu.scrollToDest(0,500)">0</span></a></div><div id="toggle-menu"><a class="site-page" href="javascript:void(0);" title="切换"><i class="anzhiyufont anzhiyu-icon-bars"></i></a></div></div></div></nav><div id="post-info"><div id="post-firstinfo"><div class="meta-firstline"><a class="post-meta-original">原创</a><span class="post-meta-categories"><span class="post-meta-separator"></span><i class="anzhiyufont anzhiyu-icon-inbox post-meta-icon"></i><a class="post-meta-categories" href="/categories/%E5%A4%A7%E6%A8%A1%E5%9E%8B/" itemprop="url">大模型</a></span><span class="article-meta tags"><a class="article-meta__tags" href="/tags/cuda/" tabindex="-1" itemprop="url"> <span> <i class="anzhiyufont anzhiyu-icon-hashtag"></i>cuda</span></a></span></div></div><h1 class="post-title" itemprop="name headline">性能剖析</h1><div id="post-meta"><div class="meta-firstline"><span class="post-meta-date"><i class="anzhiyufont anzhiyu-icon-calendar-days post-meta-icon"></i><span class="post-meta-label">发表于</span><time class="post-meta-date-created" itemprop="dateCreated datePublished" datetime="2026-09-16T16:00:00.000Z" title="发表于 2026-09-17 00:00:00">2026-09-17</time><span class="post-meta-separator"></span><i class="anzhiyufont anzhiyu-icon-history post-meta-icon"></i><span class="post-meta-label">更新于</span><time class="post-meta-date-updated" itemprop="dateCreated datePublished" datetime="2026-09-17T11:33:17.515Z" title="更新于 2026-09-17 19:33:17">2026-09-17</time></span></div><div class="meta-secondline"><span class="post-meta-separator">       </span><span class="post-meta-position" title="作者IP属地为哈尔滨"><i class="anzhiyufont anzhiyu-icon-location-dot"></i>哈尔滨</span></div></div></div><section class="main-hero-waves-area waves-area"><svg class="waves-svg" xmlns="http://www.w3.org/2000/svg" xlink="http://www.w3.org/1999/xlink" viewBox="0 24 150 28" preserveAspectRatio="none" shape-rendering="auto"><defs><path id="gentle-wave" d="M -160 44 c 30 0 58 -18 88 -18 s 58 18 88 18 s 58 -18 88 -18 s 58 18 88 18 v 44 h -352 Z"></path></defs><g class="parallax"><use href="#gentle-wave" x="48" y="0"></use><use href="#gentle-wave" x="48" y="3"></use><use href="#gentle-wave" x="48" y="5"></use><use href="#gentle-wave" x="48" y="7"></use></g></svg></section><div id="post-top-cover"><img class="nolazyload" id="post-top-bg" src=""></div></header><main id="blog-container"><div class="layout" id="content-inner"><div id="post"><article class="post-content" id="article-container" itemscope itemtype="http://example.com/2026/09/16/LLM/%E6%80%A7%E8%83%BD%E5%89%96%E6%9E%90/"><header><a class="post-meta-categories" href="/categories/%E5%A4%A7%E6%A8%A1%E5%9E%8B/" itemprop="url">大模型</a><a href="/tags/cuda/" tabindex="-1" itemprop="url">cuda</a><h1 id="CrawlerTitle" itemprop="name headline">性能剖析</h1><span itemprop="author" itemscope itemtype="http://schema.org/Person">ub-w</span><time itemprop="dateCreated datePublished" datetime="2026-09-16T16:00:00.000Z" title="发表于 2026-09-17 00:00:00">2026-09-17</time><time itemprop="dateCreated datePublished" datetime="2026-09-17T11:33:17.515Z" title="更新于 2026-09-17 19:33:17">2026-09-17</time></header><h1 id="性能剖析"><a href="#性能剖析" class="headerlink" title="性能剖析"></a>性能剖析</h1><p>性能优化之前必须先进行性能剖析（profiling）。剖析不是收集越多指标越好，而是用证据回答：程序哪里慢、哪个 kernel 重要、它为什么慢，以及应该优化什么。</p>
+<h2 id="一、性能剖析流程"><a href="#一、性能剖析流程" class="headerlink" title="一、性能剖析流程"></a>一、性能剖析流程</h2><table>
+<thead>
+<tr>
+<th>问题</th>
+<th>查看内容</th>
+<th>现代工具</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>时间花在哪里？</td>
+<td>时间线、CPU↔GPU 数据复制、Kernel、同步等待</td>
+<td>Nsight Systems</td>
+</tr>
+<tr>
+<td>哪个 kernel 最重要？</td>
+<td>总耗时、调用次数、单次耗时</td>
+<td>Nsight Systems</td>
+</tr>
+<tr>
+<td>kernel 受什么限制？</td>
+<td>Compute &#x2F; Bandwidth &#x2F; Latency</td>
+<td>Nsight Compute</td>
+</tr>
+<tr>
+<td>哪项资源有问题？</td>
+<td>DRAM、Cache、执行管线、Occupancy</td>
+<td>Nsight Compute</td>
+</tr>
+<tr>
+<td>warp 为什么停顿？</td>
+<td>Stall Reasons、Source Counters</td>
+<td>Nsight Compute</td>
+</tr>
+</tbody></table>
+<figure class="highlight text"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br></pre></td><td class="code"><pre><span class="line">正确测量优化前的性能</span><br><span class="line">        ↓</span><br><span class="line">查看应用时间线</span><br><span class="line">        ↓</span><br><span class="line">找到性能关键 kernel</span><br><span class="line">        ↓</span><br><span class="line">判断计算、带宽还是延迟受限</span><br><span class="line">        ↓</span><br><span class="line">检查对应资源和源码</span><br><span class="line">        ↓</span><br><span class="line">修改后重新测量</span><br></pre></td></tr></table></figure>
+
+<p>分析分为两个层次：<strong>Nsight Systems 查看整个应用，回答“时间花在哪里”；Nsight Compute 深入单个 kernel，回答“为什么慢”。</strong></p>
+<h2 id="二、优化前先正确测量"><a href="#二、优化前先正确测量" class="headerlink" title="二、优化前先正确测量"></a>二、优化前先正确测量</h2><p>优化代码之前，要先完成两件事：</p>
+<ol>
+<li><strong>明确测量范围</strong>：测整个程序的端到端时间，还是只测某个 kernel 的执行时间；</li>
+<li><strong>保存优化前的数据</strong>：把当前版本的耗时和测试条件记录下来，作为之后比较的起点。</li>
+</ol>
+<p>这个“优化前的比较起点”就叫做<strong>性能基线（performance baseline）</strong>。例如：</p>
+<figure class="highlight text"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line">输入规模：N = 2^27</span><br><span class="line">完整程序耗时：800 ms</span><br><span class="line">Host → Device：350 ms</span><br><span class="line">vecadd kernel：15 ms</span><br><span class="line">Device → Host：400 ms</span><br></pre></td></tr></table></figure>
+
+<p>优化后必须使用相同的输入规模和测量范围重新测试，才能判断修改是否真的有效。之所以强调“正确测量”，是因为 CUDA 操作可能异步执行，首次运行还可能包含初始化开销，单次结果也可能存在波动。</p>
+<p>下面使用一个完整、可独立理解的向量加法作为贯穿示例：</p>
+<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br></pre></td><td class="code"><pre><span class="line">__global__ void vecadd_kernel(</span><br><span class="line">    float* x, float* y, float* z, int N)</span><br><span class="line">&#123;</span><br><span class="line">    int i = blockIdx.x * blockDim.x + threadIdx.x;</span><br><span class="line">    if (i &lt; N) &#123;</span><br><span class="line">        z[i] = x[i] + y[i];</span><br><span class="line">    &#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>完整执行过程包括：</p>
+<figure class="highlight text"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br></pre></td><td class="code"><pre><span class="line">GPU 内存分配</span><br><span class="line">    ↓</span><br><span class="line">x、y：Host → Device</span><br><span class="line">    ↓</span><br><span class="line">执行 vecadd_kernel</span><br><span class="line">    ↓</span><br><span class="line">z：Device → Host</span><br><span class="line">    ↓</span><br><span class="line">GPU 内存释放</span><br></pre></td></tr></table></figure>
+
+<p>其中 <strong>HtoD（Host to Device）</strong> 表示 CPU 内存复制到 GPU 显存，<strong>DtoH（Device to Host）</strong> 表示 GPU 显存复制回 CPU 内存。</p>
+<p>因此需要区分：</p>
+<ul>
+<li><strong>Kernel time</strong>：只计算 GPU kernel 的时间；</li>
+<li><strong>Overall time</strong>：完成整项任务的端到端时间。</li>
+</ul>
+<p>kernel 变快，不代表端到端时间一定明显下降。</p>
+<p><strong>CUDA 的异步性</strong></p>
+<p>kernel launch 通常是异步的：</p>
+<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">vecadd_kernel&lt;&lt;&lt;blocks, threads&gt;&gt;&gt;(x_d, y_d, z_d, N);</span><br></pre></td></tr></table></figure>
+
+<p>调用返回时，GPU 可能还没有执行完。如果用 CPU 计时器，需要在测量边界正确同步：</p>
+<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br></pre></td><td class="code"><pre><span class="line">cudaDeviceSynchronize();</span><br><span class="line">startTime(&amp;timer);</span><br><span class="line"></span><br><span class="line">vecadd_kernel&lt;&lt;&lt;blocks, threads&gt;&gt;&gt;(...);</span><br><span class="line"></span><br><span class="line">cudaDeviceSynchronize();</span><br><span class="line">stopTime(&amp;timer);</span><br></pre></td></tr></table></figure>
+
+<p>测量纯 GPU 工作时，通常优先使用 CUDA Event。正式 benchmark 还应进行预热、多次重复，并报告稳定统计值。</p>
+<h2 id="三、应用级分析：时间花在哪里"><a href="#三、应用级分析：时间花在哪里" class="headerlink" title="三、应用级分析：时间花在哪里"></a>三、应用级分析：时间花在哪里</h2><h3 id="1-用-Timeline-查看工作如何排列"><a href="#1-用-Timeline-查看工作如何排列" class="headerlink" title="1.用 Timeline 查看工作如何排列"></a>1.用 Timeline 查看工作如何排列</h3><p>**Timeline（时间线）**按照发生时间展示 CPU 调用、数据复制和 GPU kernel。它首先回答的不是“某个 kernel 为什么慢”，而是“整个程序的时间到底花在了哪里”。</p>
+<p><img src= "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7" onerror="this.onerror=null,this.src=&quot;/img/404.jpg&quot;" data-lazy-src="https://cdn.jsdelivr.net/gh/ub-w/Article-images@main/Typoraapplication-analysis.png" alt="NVVP 应用分析与时间线"></p>
+<p>这张图可以分成两部分看：</p>
+<ul>
+<li><strong>上半部分 Timeline</strong>：横轴是时间，不同轨道展示 CUDA API、Memcpy 和 kernel 是否串行或重叠；</li>
+<li><strong>下半部分 Analysis</strong>：工具根据时间线给出提示，例如复制与计算重叠较少、计算利用率较低；</li>
+<li>这些提示只是后续调查方向，不能脱离程序依赖关系直接当作优化结论。</li>
+</ul>
+<p>时间线可以看到：</p>
+<ul>
+<li>CPU 何时调用 CUDA API；</li>
+<li>HtoD、DtoH 何时执行；</li>
+<li>kernel 何时开始和结束；</li>
+<li>不同 stream 是否并发；</li>
+<li>CPU 和 GPU 何时等待；</li>
+<li>数据传输是否与计算重叠。</li>
+</ul>
+<p>对于前面的同步向量加法示例，一种典型时间线是：</p>
+<figure class="highlight text"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">HtoD(x) → HtoD(y) → vecadd_kernel → DtoH(z)</span><br></pre></td></tr></table></figure>
+
+<p>所有操作串行执行，没有 memcpy&#x2F;kernel overlap。</p>
+<p>低重叠不一定就是 bug。若只有一批数据，且 kernel 必须等待输入、输出必须等待 kernel，天然存在依赖。要形成流水线，通常需要把数据拆成多个 chunk，并结合 pinned memory、<code>cudaMemcpyAsync</code> 和多个非默认 stream。</p>
+<p>更优先的问题通常是：能否让数据持续驻留在 GPU，从根本上减少 CPU↔GPU 往返。</p>
+<h3 id="2-找到真正重要的-kernel"><a href="#2-找到真正重要的-kernel" class="headerlink" title="2.找到真正重要的 kernel"></a>2.找到真正重要的 kernel</h3><p>Profiler 会按执行时间和调用情况排列 kernel。阅读时要区分：</p>
+<ul>
+<li>单次最慢的 kernel；</li>
+<li>累计时间最多的 kernel；</li>
+<li>整个应用真正的瓶颈。</li>
+</ul>
+<p>如果 <code>vecadd_kernel</code> 是一次运行中唯一的 kernel，它自然会在 kernel 排名中位列第一；但还必须回到应用时间线检查它在端到端时间中的占比。若它只占整体时间的 2%，排名第一也不意味着应该优先微调它。</p>
+<p>这体现了 <strong>Amdahl 定律</strong>：整体加速效果受“被优化部分在总时间中的占比”限制。如果一个 kernel 只占总时间的 2%，即使把它的耗时完全消除，整体时间也最多减少约 2%。</p>
+<h2 id="四、Kernel-级分析：为什么慢"><a href="#四、Kernel-级分析：为什么慢" class="headerlink" title="四、Kernel 级分析：为什么慢"></a>四、Kernel 级分析：为什么慢</h2><h3 id="1-查看启动配置与资源用量"><a href="#1-查看启动配置与资源用量" class="headerlink" title="1.查看启动配置与资源用量"></a>1.查看启动配置与资源用量</h3><p>课程使用的 NVVP 界面如下。先在中间的 kernel 列表或上方时间线中选中 <code>vecadd_kernel</code>，然后查看右侧的 <strong>Properties</strong> 面板：</p>
+<p><img src= "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7" onerror="this.onerror=null,this.src=&quot;/img/404.jpg&quot;" data-lazy-src="https://cdn.jsdelivr.net/gh/ub-w/Article-images@main/Typorakernel-properties.png" alt="选中 kernel 后查看右侧 Properties 面板"></p>
+<p>图中右侧面板分成两类信息：</p>
+<ul>
+<li><strong>启动信息</strong>：Duration、Grid Size、Block Size 和 Stream；</li>
+<li><strong>资源信息</strong>：Registers&#x2F;Thread、Shared Memory&#x2F;Block 和 Occupancy。</li>
+</ul>
+<p>常见字段含义如下：</p>
+<table>
+<thead>
+<tr>
+<th>属性</th>
+<th>含义</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Duration</td>
+<td>kernel 在 GPU 上的执行时间</td>
+</tr>
+<tr>
+<td>Stream</td>
+<td>所属 CUDA stream</td>
+</tr>
+<tr>
+<td>Grid Size</td>
+<td>grid 中 block 的数量</td>
+</tr>
+<tr>
+<td>Block Size</td>
+<td>每个 block 的线程数量</td>
+</tr>
+<tr>
+<td>Registers&#x2F;Thread</td>
+<td>每线程寄存器用量</td>
+</tr>
+<tr>
+<td>Shared Memory&#x2F;Block</td>
+<td>每 block 共享内存用量</td>
+</tr>
+<tr>
+<td>Achieved Occupancy</td>
+<td>运行时实际平均 occupancy</td>
+</tr>
+<tr>
+<td>Theoretical Occupancy</td>
+<td>根据资源计算的理论上限</td>
+</tr>
+</tbody></table>
+<p>以 <code>N = 2^27</code>、每个 block 512 个线程的向量加法为例，可以直接推导出 grid 大小为 <code>ceil(N / 512) = 262144</code>。但 <code>Registers/Thread</code> 要看编译结果，Achieved Occupancy 要靠实际运行测量，不能从源码或课堂中的一次结果直接推广。</p>
+<figure class="highlight text"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line">Grid Size：          262144</span><br><span class="line">Block Size：         512</span><br><span class="line">Shared Memory/Block：0 B（该 kernel 未声明 shared memory）</span><br><span class="line">Registers/Thread：   以本次编译报告为准</span><br><span class="line">Achieved Occupancy： 以本次 profiling 报告为准</span><br></pre></td></tr></table></figure>
+
+<h3 id="2-分析-Occupancy-及其限制因素"><a href="#2-分析-Occupancy-及其限制因素" class="headerlink" title="2.分析 Occupancy 及其限制因素"></a>2.分析 Occupancy 及其限制因素</h3><p>Occupancy 是每个 SM 上活跃 warp 数相对于硬件最大活跃 warp 数的比例。</p>
+<p><img src= "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7" onerror="this.onerror=null,this.src=&quot;/img/404.jpg&quot;" data-lazy-src="https://cdn.jsdelivr.net/gh/ub-w/Article-images@main/Typoraoccupancy-analysis.png" alt="NVVP Occupancy 分析界面"></p>
+<p>这张图不是只给出一个 Occupancy 百分比，还分别列出了：</p>
+<ul>
+<li>当前每个 block 的线程和 warp 数；</li>
+<li>每线程、每 block 的寄存器用量；</li>
+<li>每 block 的共享内存用量；</li>
+<li>线程、寄存器、共享内存和 block 数上限分别允许多少活跃 block。</li>
+</ul>
+<p>真正要找的是哪一项资源先达到上限，因为它决定一个 SM 最终能同时驻留多少个 block。</p>
+<p>Profiler 会分别计算线程、寄存器、共享内存和硬件 block 上限允许多少驻留 block，最终取最小值：</p>
+<figure class="highlight text"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br></pre></td><td class="code"><pre><span class="line">线程允许的 blocks/SM</span><br><span class="line">寄存器允许的 blocks/SM</span><br><span class="line">共享内存允许的 blocks/SM</span><br><span class="line">硬件允许的 blocks/SM</span><br><span class="line">            ↓</span><br><span class="line">取最小值</span><br><span class="line">            ↓</span><br><span class="line">实际理论驻留 block 数</span><br></pre></td></tr></table></figure>
+
+<p>假设目标 GPU 的一个 SM 最多驻留 2048 个线程、64 个 warp，并且其他资源不构成限制。当前 block 有 512 个线程，即 16 个 warp，则：</p>
+<figure class="highlight text"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">4 blocks × 512 threads = 2048 threads</span><br><span class="line">4 blocks × 16 warps   = 64 warps</span><br></pre></td></tr></table></figure>
+
+<p>在这些明确的假设下，理论 occupancy 可以达到 100%。实际设备限制和编译后的寄存器用量必须从设备资料与 profiler 报告获得。</p>
+<p> <strong>Block 大小的影响</strong></p>
+<ul>
+<li>每 block 的 warp 数；</li>
+<li>每 SM 可驻留 block 数；</li>
+<li>寄存器和共享内存的分配；</li>
+<li>调度粒度与尾部效应；</li>
+<li>某些算法的 tile 大小和数据复用。</li>
+</ul>
+<p>block 越大不代表 occupancy 越高。通常测试 <code>128、256、512</code> 等 32 的整数倍，并以实际运行时间判断。</p>
+<p>如果一个 block 只有 32 个线程，它正好是一个 warp；但在每 SM 最大驻留 block 数有限的设备上，可能因为 block 数上限而无法填满全部 warp。例如最多驻留 32 个 block、64 个 warp 的 SM，只能得到 32 个驻留 warp，即最高约 50% occupancy。</p>
+<p>高 occupancy 也不保证高性能。只要活跃 warp 已足够隐藏延迟，继续提高 occupancy 可能没有收益。</p>
+<h3 id="3-判断-Compute、Bandwidth-或-Latency-Bound"><a href="#3-判断-Compute、Bandwidth-或-Latency-Bound" class="headerlink" title="3.判断 Compute、Bandwidth 或 Latency Bound"></a>3.判断 Compute、Bandwidth 或 Latency Bound</h3><table>
+<thead>
+<tr>
+<th>类型</th>
+<th>常见表现</th>
+<th>后续检查</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Compute bound</td>
+<td>某类计算管线利用率高</td>
+<td>指令构成、功能单元</td>
+</tr>
+<tr>
+<td>Memory bandwidth bound</td>
+<td>Device Memory 利用率高</td>
+<td>事务、带宽、Cache、访存模式</td>
+</tr>
+<tr>
+<td>Latency bound</td>
+<td>计算和带宽都不高，但 warp 频繁等待</td>
+<td>Stall Reasons、依赖、Occupancy</td>
+</tr>
+</tbody></table>
+<p><img src= "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7" onerror="this.onerror=null,this.src=&quot;/img/404.jpg&quot;" data-lazy-src="https://cdn.jsdelivr.net/gh/ub-w/Article-images@main/Typoraboundedness-analysis.png" alt="NVVP 判断计算受限还是内存带宽受限"></p>
+<p>图中的计算利用率明显低于 Device Memory 利用率，因此工具把这个 <code>vecadd_kernel</code> 判断为更可能受到显存带宽限制。这个结论只适用于图中这次运行，换输入规模或 GPU 后需要重新测量。</p>
+<p><img src= "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7" onerror="this.onerror=null,this.src=&quot;/img/404.jpg&quot;" data-lazy-src="https://cdn.jsdelivr.net/gh/ub-w/Article-images@main/Typora20260605162258895.png" alt="计算受限与内存受限的判断"></p>
+<p>向量加法的算术强度很低，因此在数据规模足够大、访存规整且执行开销被摊薄时，通常容易受显存带宽限制；是否已经达到该状态，仍应由实际 profiler 数据确认。</p>
+<h3 id="4-Memory-Bandwidth-与-Memory-Statistics"><a href="#4-Memory-Bandwidth-与-Memory-Statistics" class="headerlink" title="4.Memory Bandwidth 与 Memory Statistics"></a>4.Memory Bandwidth 与 Memory Statistics</h3><p>Profiler 可以沿内存层次查看：</p>
+<p><img src= "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7" onerror="this.onerror=null,this.src=&quot;/img/404.jpg&quot;" data-lazy-src="https://cdn.jsdelivr.net/gh/ub-w/Article-images@main/Typoraimage-20260603141252513.png" alt="CUDA 内存层次"></p>
+<p><img src= "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7" onerror="this.onerror=null,this.src=&quot;/img/404.jpg&quot;" data-lazy-src="https://cdn.jsdelivr.net/gh/ub-w/Article-images@main/Typoramemory-bandwidth-analysis.png" alt="NVVP Memory Bandwidth 分析界面"></p>
+<p>在这张报告中，应当按内存层次逐级看带宽和事务：Shared Memory、L2 Cache、Unified Cache、Device Memory 和 System Memory。图中 Device Memory 的利用率最高，所以后续应重点检查显存流量是否必要、访问是否合并，以及数据是否能够复用。</p>
+<figure class="highlight text"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br></pre></td><td class="code"><pre><span class="line">SM</span><br><span class="line"> ↕</span><br><span class="line">Global / Local / Texture / Shared</span><br><span class="line"> ↕</span><br><span class="line">L1 / Unified Cache</span><br><span class="line"> ↕</span><br><span class="line">L2 Cache</span><br><span class="line"> ↕</span><br><span class="line">Device Memory</span><br></pre></td></tr></table></figure>
+
+<p>常见数据包括：</p>
+<ul>
+<li>memory instructions；</li>
+<li>memory requests &#x2F; transactions；</li>
+<li>读写字节数；</li>
+<li>各层带宽和利用率；</li>
+<li>cache hit rate；</li>
+<li>local memory、atomic、texture 和 shared memory 流量。</li>
+</ul>
+<p>可以先用下面的简化关系理解这些统计量：</p>
+<ul>
+<li><strong>Memory instruction</strong>：warp 执行了一条 load 或 store 指令；</li>
+<li><strong>Request</strong>：这条指令产生的逻辑访存请求；</li>
+<li><strong>Transaction</strong>：内存层次为了满足请求而进行的实际数据传输；</li>
+<li><strong>Transferred bytes</strong>：这些 transaction 实际搬运的数据量。</li>
+</ul>
+<p>地址越分散，一条访存指令通常会被拆成越多 transaction，因此实际搬运的数据可能明显多于程序真正使用的数据。</p>
+<p><strong>如何阅读</strong></p>
+<figure class="highlight text"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br></pre></td><td class="code"><pre><span class="line">事务数明显高于理论需要</span><br><span class="line">    → 可能存在非合并访问或无效字节</span><br><span class="line"></span><br><span class="line">DRAM 流量很大，缓存命中低</span><br><span class="line">    → 可能缺少数据复用</span><br><span class="line"></span><br><span class="line">Device Memory 利用率接近上限</span><br><span class="line">    → 可能受显存带宽限制</span><br><span class="line"></span><br><span class="line">Local Memory 出现大量流量</span><br><span class="line">    → 可能有寄存器溢出或较大的线程私有数组</span><br></pre></td></tr></table></figure>
+
+<p><strong>向量加法为什么容易带宽受限</strong></p>
+<p>每个元素执行：</p>
+<figure class="highlight text"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line">读取 x：4 Byte</span><br><span class="line">读取 y：4 Byte</span><br><span class="line">写入 z：4 Byte</span><br><span class="line">计算：1 次加法</span><br></pre></td></tr></table></figure>
+
+<p>算术强度大约是 <code>1 FLOP / 12 Byte</code>。</p>
+<p>计算很少、数据移动很多，所以通常受显存带宽限制。</p>
+<details>
+<summary>展开：使用 N = 2^27 验证理论数据量与指令数</summary>
+
+<p>假设 <code>N = 2^27 = 134217728</code>。</p>
+<p>理论读取量为 <code>2 × N × 4 Byte = 1 GiB</code>。</p>
+<p>理论写入量为 <code>N × 4 Byte = 512 MiB</code>。</p>
+<p>如果 profiler 中 L2 与 Device Memory 间的流量也接近读取 1 GiB、写入 512 MiB，才可以据此判断没有明显额外流量。</p>
+<p>总 warp 数为 <code>N / 32 = 4194304</code>。</p>
+<p>每个 warp 执行两条 load 和一条 store，所以大约执行 <code>4194304 × 3 = 12582912</code> 条内存指令。</p>
+<p>即约 12.59 million 条 warp 级内存指令。如果报告值与之接近，而且实际传输字节接近理论值，就能为“访存模式比较规整”提供证据。</p>
+</details>
+
+<p>对于这种单独的流式向量加法，共享内存没有数据复用价值。更有效的方向是算子融合、降低数据精度和避免中间张量反复写回显存。</p>
+<h3 id="5-Compute-Resource-Utilization"><a href="#5-Compute-Resource-Utilization" class="headerlink" title="5.Compute Resource Utilization"></a>5.Compute Resource Utilization</h3><p>Profiler 可以查看不同功能单元的利用率：</p>
+<p><img src= "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7" onerror="this.onerror=null,this.src=&quot;/img/404.jpg&quot;" data-lazy-src="https://cdn.jsdelivr.net/gh/ub-w/Article-images@main/Typoracompute-utilization.png" alt="NVVP 计算资源利用率分析界面"></p>
+<p>图中上半部分表示 Load&#x2F;Store、算术和控制流等功能单元的利用程度；下半部分表示不同类型指令在已执行指令中的占比。两张图需要结合阅读：指令占比高不等于对应执行管线已经成为瓶颈。</p>
+<ul>
+<li>Load&#x2F;Store；</li>
+<li>FP16、FP32、FP64；</li>
+<li>Integer；</li>
+<li>Special Function；</li>
+<li>Control-Flow；</li>
+<li>Texture。</li>
+</ul>
+<p>还可以查看指令构成和 inactive&#x2F;predicated-off 线程，用来分析：</p>
+<ul>
+<li>某类执行管线是否饱和；</li>
+<li>整数索引计算是否过多；</li>
+<li>load&#x2F;store 是否占比很高；</li>
+<li>控制流和 warp 分歧是否明显；</li>
+<li>是否执行了大量无效指令。</li>
+</ul>
+<p>需要注意：指令数量占比不等于耗时占比。某类指令很多，不代表它一定是性能瓶颈，还要结合管线利用率和 stall 情况。</p>
+<h3 id="6-Latency-Analysis"><a href="#6-Latency-Analysis" class="headerlink" title="6.Latency Analysis"></a>6.Latency Analysis</h3><p>当 warp 当前不能发射下一条指令时，profiler 会统计 stall reason。</p>
+<p><img src= "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7" onerror="this.onerror=null,this.src=&quot;/img/404.jpg&quot;" data-lazy-src="https://cdn.jsdelivr.net/gh/ub-w/Article-images@main/Typoralatency-stall-reasons.png" alt="Warp 停顿原因占比"></p>
+<p>这张图表示采样到的 warp 停顿主要来自 <strong>memory dependency</strong>，也就是下一条指令依赖尚未返回的内存数据。饼图只能告诉我们等待类型的占比，还需要结合吞吐量、Occupancy 和具体源码判断它是否是主要瓶颈。</p>
+<table>
+<thead>
+<tr>
+<th>Stall Reason</th>
+<th>含义</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Memory Dependency</td>
+<td>等待 load 返回的数据</td>
+</tr>
+<tr>
+<td>Execution Dependency</td>
+<td>等待前一条计算产生结果</td>
+</tr>
+<tr>
+<td>Instruction Fetch</td>
+<td>等待取指令</td>
+</tr>
+<tr>
+<td>Not Selected</td>
+<td>warp 已就绪，但调度器选择了其他 warp</td>
+</tr>
+<tr>
+<td>Memory Throttle</td>
+<td>内存请求队列或管线压力过高</td>
+</tr>
+<tr>
+<td>Pipe Busy</td>
+<td>所需执行管线正在忙</td>
+</tr>
+<tr>
+<td>Synchronization</td>
+<td>等待 barrier 等同步操作</td>
+</tr>
+<tr>
+<td>Constant &#x2F; Texture</td>
+<td>等待相应内存路径的数据</td>
+</tr>
+</tbody></table>
+<p><code>Not Selected</code> 不一定是坏事，它可能说明调度器拥有很多可执行 warp。Stall 指标必须与吞吐量、eligible warps 和源码一起分析，不能看到占比高就直接认定为瓶颈。</p>
+<p>PC Sampling 或现代 Nsight Compute 的 Source Counters 可以将 stall 定位到源码、PTX 或 SASS 指令。</p>
+<h2 id="五、从分析到优化验证"><a href="#五、从分析到优化验证" class="headerlink" title="五、从分析到优化验证"></a>五、从分析到优化验证</h2><h3 id="1-应用层"><a href="#1-应用层" class="headerlink" title="1.应用层"></a>1.应用层</h3><ol>
+<li>端到端时间是多少？</li>
+<li>Memcpy、kernel、同步分别占多少？</li>
+<li>CPU 和 GPU 是否存在大段空闲？</li>
+<li>复制和计算是否可能重叠？</li>
+</ol>
+<h3 id="2-Kernel-层"><a href="#2-Kernel-层" class="headerlink" title="2.Kernel 层"></a>2.Kernel 层</h3><ol>
+<li>哪些 kernel 的累计耗时最高？</li>
+<li>是 compute、bandwidth 还是 latency bound？</li>
+<li>grid、block、寄存器和共享内存配置如何？</li>
+<li>Occupancy 被什么资源限制？</li>
+<li>内存事务和实际字节是否符合算法预期？</li>
+<li>哪种执行管线利用率最高？</li>
+<li>warp 主要因为什么停顿？</li>
+</ol>
+<h3 id="3-优化验证"><a href="#3-优化验证" class="headerlink" title="3.优化验证"></a>3.优化验证</h3><ol>
+<li>每次只修改一个主要因素；</li>
+<li>保留优化前的性能基线；</li>
+<li>验证数值正确性；</li>
+<li>使用非 profiling 运行重新测量；</li>
+<li>检查瓶颈是否已经转移。</li>
+</ol>
+<h2 id="六、旧工具附录"><a href="#六、旧工具附录" class="headerlink" title="六、旧工具附录"></a>六、旧工具附录</h2><p><code>nvprof</code> 和 NVVP 已被弃用，并已从 CUDA 13.0 移除，因此这里只保留它们来帮助阅读旧资料；新的实验应迁移到 Nsight 工具。移除信息可在 <a target="_blank" rel="noopener" href="https://docs.nvidia.com/cuda/archive/13.0.3/cuda-toolkit-release-notes/index.html">CUDA 13.0 Release Notes</a> 中核对。</p>
+<table>
+<thead>
+<tr>
+<th>旧工具或界面</th>
+<th>现代工具</th>
+<th>主要用途</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>nvprof</code> 时间摘要</td>
+<td><code>nsys stats</code></td>
+<td>CUDA API、kernel 和 memcpy 汇总</td>
+</tr>
+<tr>
+<td>NVVP Timeline</td>
+<td>Nsight Systems</td>
+<td>CPU&#x2F;GPU 时间线与并发关系</td>
+</tr>
+<tr>
+<td>NVVP Kernel Analysis</td>
+<td>Nsight Compute</td>
+<td>单个 kernel 的硬件指标</td>
+</tr>
+<tr>
+<td>Instruction &#x2F; PC Sampling</td>
+<td>Nsight Compute Source</td>
+<td>指令、源码和 stall 定位</td>
+</tr>
+</tbody></table>
+<details>
+<summary>展开：阅读旧课程时需要的 nvprof / NVVP 命令</summary>
+
+<p>命令行摘要：</p>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">nvprof ./vecadd</span><br></pre></td></tr></table></figure>
+
+<p>输出中的 <code>GPU activities</code> 表示 GPU 上实际发生的 memcpy 和 kernel；<code>API calls</code> 表示 CPU 调用 CUDA Runtime API 所花的时间。<code>cudaDeviceSynchronize</code> 的 API 时间通常表示 CPU 正在等待此前提交的 GPU 工作，并不是 GPU 执行了一个同名计算任务。</p>
+<p>常见字段：</p>
+<table>
+<thead>
+<tr>
+<th>字段</th>
+<th>含义</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Time(%)</td>
+<td>在同类活动总时间中的占比</td>
+</tr>
+<tr>
+<td>Time</td>
+<td>累计时间</td>
+</tr>
+<tr>
+<td>Calls</td>
+<td>调用次数</td>
+</tr>
+<tr>
+<td>Avg</td>
+<td>平均时间</td>
+</tr>
+<tr>
+<td>Min &#x2F; Max</td>
+<td>最短和最长时间</td>
+</tr>
+<tr>
+<td>Name</td>
+<td>活动、kernel 或 API 名称</td>
+</tr>
+</tbody></table>
+<p>生成时间线与硬件指标报告：</p>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line">nvprof -o timeline.prof ./vecadd</span><br><span class="line">nvprof -m all -o metrics.prof ./vecadd</span><br><span class="line">nvvp &amp;</span><br></pre></td></tr></table></figure>
+
+<p><code>timeline.prof</code> 用于寻找时间花在哪里，<code>metrics.prof</code> 用于分析 kernel 为什么慢。</p>
+</details>
+
+<p><strong>Profiling 不等于 Benchmark</strong></p>
+<p>GPU 硬件计数器数量有限，收集大量 metrics 时，profiler 可能多次 replay 同一个 kernel。此时采集期间的运行时间不能作为真实性能结果。实际使用时应只收集与当前假设有关的指标，并尽量限定 kernel 或代码范围。</p>
+<p>现代命令示例：</p>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment"># 整体时间线</span></span><br><span class="line">nsys profile --stats=<span class="literal">true</span> -o timeline ./vecadd</span><br><span class="line"></span><br><span class="line"><span class="comment"># 单个 kernel 深入分析</span></span><br><span class="line">ncu --<span class="built_in">set</span> full -o metrics ./vecadd</span><br></pre></td></tr></table></figure>
+
+<p><code>ncu --set full</code> 也可能 replay kernel，因此同样不能把 profiling 运行时间当作正式 benchmark。</p>
+<h2 id="七、总结"><a href="#七、总结" class="headerlink" title="七、总结"></a>七、总结</h2><ul>
+<li>性能剖析首先建立可靠基线；kernel launch 具有异步性，计时必须处理同步边界。</li>
+<li>Nsight Systems 用于分析整个应用的时间线，先找出 memcpy、kernel、同步和 CPU 等部分的耗时。</li>
+<li>Nsight Compute 用于深入关键 kernel，分析启动配置、Occupancy、内存、计算管线和 warp stall。</li>
+<li>Kernel 排名必须结合端到端占比理解，排名第一不等于值得优先优化。</li>
+<li>判断瓶颈时先区分 compute、bandwidth 和 latency bound，再检查对应指标与源码。</li>
+<li>Profiling 用来解释行为，benchmark 用来比较性能；优化后必须使用正常运行重新计时。</li>
+</ul>
+<h2 id="参考资料"><a href="#参考资料" class="headerlink" title="参考资料"></a>参考资料</h2><ul>
+<li><a target="_blank" rel="noopener" href="https://docs.nvidia.com/cuda/cuda-c-best-practices-guide/">NVIDIA CUDA C++ Best Practices Guide</a></li>
+<li><a target="_blank" rel="noopener" href="https://docs.nvidia.com/nsight-systems/UserGuide/#cuda-trace">NVIDIA Nsight Systems User Guide：CUDA Trace</a></li>
+<li><a target="_blank" rel="noopener" href="https://docs.nvidia.com/nsight-compute/ProfilingGuide/">NVIDIA Nsight Compute Profiling Guide</a></li>
+<li><a target="_blank" rel="noopener" href="https://docs.nvidia.com/cuda/profiler-users-guide/">NVIDIA CUDA Profiler User’s Guide：Migrating from nvprof</a></li>
+<li><a target="_blank" rel="noopener" href="https://docs.nvidia.com/cuda/archive/13.0.1/cuda-toolkit-release-notes/">CUDA 13.0 Release Notes</a></li>
+</ul>
+</article><div class="post-copyright"><div class="copyright-cc-box"><i class="anzhiyufont anzhiyu-icon-copyright"></i></div><div class="post-copyright__author_box"><a class="post-copyright__author_img" href="/" title="头像"><img class="post-copyright__author_img_back" src= "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7" onerror="this.onerror=null,this.src=&quot;/img/404.jpg&quot;" data-lazy-src="https://raw.githubusercontent.com/ub-w/Article-images/main/Typora20251227165802126.jpg" title="头像" alt="头像"><img class="post-copyright__author_img_front" src= "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7" onerror="this.onerror=null,this.src=&quot;/img/404.jpg&quot;" data-lazy-src="https://raw.githubusercontent.com/ub-w/Article-images/main/Typora20251227165802126.jpg" title="头像" alt="头像"></a><div class="post-copyright__author_name">ub-w</div><div class="post-copyright__author_desc">Driven by dreams, not by profit.</div></div><div class="post-copyright__post__info"><a class="post-copyright__original" title="该文章为原创文章，注意版权协议" href="http://example.com/2026/09/16/LLM/%E6%80%A7%E8%83%BD%E5%89%96%E6%9E%90/">原创</a><a class="post-copyright-title"><span onclick="rm.copyPageUrl('http://example.com/2026/09/16/LLM/%E6%80%A7%E8%83%BD%E5%89%96%E6%9E%90/')">性能剖析</span></a></div><div class="post-tools" id="post-tools"><div class="post-tools-left"><div class="rewardLeftButton"></div><div class="shareRight"><div class="share-link mobile"><div class="share-qrcode"><div class="share-button" title="使用手机访问这篇文章"><i class="anzhiyufont anzhiyu-icon-qrcode"></i></div><div class="share-main"><div class="share-main-all"><div id="qrcode" title="http://example.com/2026/09/16/LLM/%E6%80%A7%E8%83%BD%E5%89%96%E6%9E%90/"></div><div class="reward-dec">使用手机访问这篇文章</div></div></div></div></div><script>function copyCurrentPageUrl() {
+  var currentPageUrl = window.location.href;
+  var input = document.createElement("input");
+  input.setAttribute("value", currentPageUrl);
+  document.body.appendChild(input);
+  input.select();
+  input.setSelectionRange(0, 99999);
+  document.execCommand("copy");
+  document.body.removeChild(input);
+}</script><div class="share-link copyurl"><div class="share-button" id="post-share-url" title="复制链接" onclick="copyCurrentPageUrl()"><i class="anzhiyufont anzhiyu-icon-link"></i></div></div></div></div></div><div class="post-copyright__notice"><span class="post-copyright-info">本博客所有文章除特别声明外，均采用 <a href="https://creativecommons.org/licenses/by-nc-sa/4.0/" target="_blank">CC BY-NC-SA 4.0</a> 许可协议。转载请注明来自 <a href="http://example.com" target="_blank">ub-w Blog</a>！</span></div></div><div class="post-tools-right"><div class="tag_share"><div class="post-meta__box"><div class="post-meta__box__tag-list"><a class="post-meta__box__tags" href="/tags/cuda/"><span class="tags-punctuation"> <i class="anzhiyufont anzhiyu-icon-tag"></i></span>cuda<span class="tagsPageCount">6</span></a></div></div></div></div><nav class="pagination-post" id="pagination"><div class="prev-post pull-left"><a href="/2026/09/15/LLM/%E6%80%A7%E8%83%BD%E8%80%83%E9%87%8F/"><img class="prev-cover" src= "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7" onerror="this.onerror=null,this.src=&quot;/img/404.jpg&quot;" data-lazy-src="/" onerror="onerror=null;src='/img/404.jpg'" alt="cover of previous post"><div class="pagination-info"><div class="label">上一篇</div><div class="prev_info">性能考量</div></div></a></div><div class="next-post pull-right"><a href="/2026/09/16/LLM/%E5%8D%B7%E7%A7%AF/"><img class="next-cover" src= "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7" onerror="this.onerror=null,this.src=&quot;/img/404.jpg&quot;" data-lazy-src="/" onerror="onerror=null;src='/img/404.jpg'" alt="cover of next post"><div class="pagination-info"><div class="label">下一篇</div><div class="next_info">卷积</div></div></a></div></nav><div class="relatedPosts"><div class="headline"><i class="anzhiyufont anzhiyu-icon-thumbs-up fa-fw" style="font-size: 1.5rem; margin-right: 4px"></i><span>喜欢这篇文章的人也看了</span></div><div class="relatedPosts-list"><div><a href="/2026/05/31/LLM/Cuda%E5%BC%95%E8%A8%80/" title="Cuda引言"><img class="cover" src= "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7" onerror="this.onerror=null,this.src=&quot;/img/404.jpg&quot;" data-lazy-src="/" alt="cover"><div class="content is-center"><div class="date"><i class="anzhiyufont anzhiyu-icon-calendar-days fa-fw"></i> 2026-06-01</div><div class="title">Cuda引言</div></div></a></div><div><a href="/2026/09/16/LLM/%E5%8D%B7%E7%A7%AF/" title="卷积"><img class="cover" src= "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7" onerror="this.onerror=null,this.src=&quot;/img/404.jpg&quot;" data-lazy-src="/" alt="cover"><div class="content is-center"><div class="date"><i class="anzhiyufont anzhiyu-icon-calendar-days fa-fw"></i> 2026-09-17</div><div class="title">卷积</div></div></a></div><div><a href="/2026/06/03/LLM/%E5%A4%9A%E7%BB%B4%E7%BD%91%E6%A0%BC%E4%B8%8E%E6%95%B0%E6%8D%AE/" title="多维网格与数据"><img class="cover" src= "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7" onerror="this.onerror=null,this.src=&quot;/img/404.jpg&quot;" data-lazy-src="/" alt="cover"><div class="content is-center"><div class="date"><i class="anzhiyufont anzhiyu-icon-calendar-days fa-fw"></i> 2026-06-04</div><div class="title">多维网格与数据</div></div></a></div><div><a href="/2026/09/15/LLM/%E6%80%A7%E8%83%BD%E8%80%83%E9%87%8F/" title="性能考量"><img class="cover" src= "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7" onerror="this.onerror=null,this.src=&quot;/img/404.jpg&quot;" data-lazy-src="/" alt="cover"><div class="content is-center"><div class="date"><i class="anzhiyufont anzhiyu-icon-calendar-days fa-fw"></i> 2026-09-16</div><div class="title">性能考量</div></div></a></div><div><a href="/2026/05/31/LLM/%E6%95%B0%E6%8D%AE%E5%B9%B6%E8%A1%8C%E7%BC%96%E7%A8%8B/" title="数据并行编程"><img class="cover" src= "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7" onerror="this.onerror=null,this.src=&quot;/img/404.jpg&quot;" data-lazy-src="/" alt="cover"><div class="content is-center"><div class="date"><i class="anzhiyufont anzhiyu-icon-calendar-days fa-fw"></i> 2026-06-01</div><div class="title">数据并行编程</div></div></a></div></div></div></div><div class="aside-content" id="aside-content"><div class="card-widget card-info"><div class="card-content"><div class="author-info-avatar"><img class="avatar-img" src= "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7" onerror="this.onerror=null,this.src=&quot;/img/404.jpg&quot;" data-lazy-src="https://raw.githubusercontent.com/ub-w/Article-images/main/Typora20251227165802126.jpg" onerror="this.onerror=null;this.src='/img/friend_404.gif'" alt="avatar"/></div><div class="author-info__description"> keywords: </div><div class="author-info__bottom-group"><a class="author-info__bottom-group-left" href="/"><h1 class="author-info__name">ub-w</h1><div class="author-info__desc">Driven by dreams, not by profit.</div></a><div class="card-info-social-icons is-center"><a class="social-icon faa-parent animated-hover" href="https://github.com/ub-w" target="_blank" title="Github"><i class="anzhiyufont anzhiyu-icon-github"></i></a><a class="social-icon faa-parent animated-hover" href="https://space.bilibili.com/627959606" target="_blank" title="BiliBili"><i class="anzhiyufont anzhiyu-icon-bilibili"></i></a></div></div></div></div><div class="sticky_layout"><div class="card-widget" id="card-toc"><div class="item-headline"><i class="anzhiyufont anzhiyu-icon-bars"></i><span>文章目录</span><span class="toc-percentage"></span></div><div class="toc-content"><ol class="toc"><li class="toc-item toc-level-1"><a class="toc-link" href="#%E6%80%A7%E8%83%BD%E5%89%96%E6%9E%90"><span class="toc-number">1.</span> <span class="toc-text">性能剖析</span></a><ol class="toc-child"><li class="toc-item toc-level-2"><a class="toc-link" href="#%E4%B8%80%E3%80%81%E6%80%A7%E8%83%BD%E5%89%96%E6%9E%90%E6%B5%81%E7%A8%8B"><span class="toc-number">1.1.</span> <span class="toc-text">一、性能剖析流程</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E4%BA%8C%E3%80%81%E4%BC%98%E5%8C%96%E5%89%8D%E5%85%88%E6%AD%A3%E7%A1%AE%E6%B5%8B%E9%87%8F"><span class="toc-number">1.2.</span> <span class="toc-text">二、优化前先正确测量</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E4%B8%89%E3%80%81%E5%BA%94%E7%94%A8%E7%BA%A7%E5%88%86%E6%9E%90%EF%BC%9A%E6%97%B6%E9%97%B4%E8%8A%B1%E5%9C%A8%E5%93%AA%E9%87%8C"><span class="toc-number">1.3.</span> <span class="toc-text">三、应用级分析：时间花在哪里</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#1-%E7%94%A8-Timeline-%E6%9F%A5%E7%9C%8B%E5%B7%A5%E4%BD%9C%E5%A6%82%E4%BD%95%E6%8E%92%E5%88%97"><span class="toc-number">1.3.1.</span> <span class="toc-text">1.用 Timeline 查看工作如何排列</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#2-%E6%89%BE%E5%88%B0%E7%9C%9F%E6%AD%A3%E9%87%8D%E8%A6%81%E7%9A%84-kernel"><span class="toc-number">1.3.2.</span> <span class="toc-text">2.找到真正重要的 kernel</span></a></li></ol></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E5%9B%9B%E3%80%81Kernel-%E7%BA%A7%E5%88%86%E6%9E%90%EF%BC%9A%E4%B8%BA%E4%BB%80%E4%B9%88%E6%85%A2"><span class="toc-number">1.4.</span> <span class="toc-text">四、Kernel 级分析：为什么慢</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#1-%E6%9F%A5%E7%9C%8B%E5%90%AF%E5%8A%A8%E9%85%8D%E7%BD%AE%E4%B8%8E%E8%B5%84%E6%BA%90%E7%94%A8%E9%87%8F"><span class="toc-number">1.4.1.</span> <span class="toc-text">1.查看启动配置与资源用量</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#2-%E5%88%86%E6%9E%90-Occupancy-%E5%8F%8A%E5%85%B6%E9%99%90%E5%88%B6%E5%9B%A0%E7%B4%A0"><span class="toc-number">1.4.2.</span> <span class="toc-text">2.分析 Occupancy 及其限制因素</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#3-%E5%88%A4%E6%96%AD-Compute%E3%80%81Bandwidth-%E6%88%96-Latency-Bound"><span class="toc-number">1.4.3.</span> <span class="toc-text">3.判断 Compute、Bandwidth 或 Latency Bound</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#4-Memory-Bandwidth-%E4%B8%8E-Memory-Statistics"><span class="toc-number">1.4.4.</span> <span class="toc-text">4.Memory Bandwidth 与 Memory Statistics</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#5-Compute-Resource-Utilization"><span class="toc-number">1.4.5.</span> <span class="toc-text">5.Compute Resource Utilization</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#6-Latency-Analysis"><span class="toc-number">1.4.6.</span> <span class="toc-text">6.Latency Analysis</span></a></li></ol></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E4%BA%94%E3%80%81%E4%BB%8E%E5%88%86%E6%9E%90%E5%88%B0%E4%BC%98%E5%8C%96%E9%AA%8C%E8%AF%81"><span class="toc-number">1.5.</span> <span class="toc-text">五、从分析到优化验证</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#1-%E5%BA%94%E7%94%A8%E5%B1%82"><span class="toc-number">1.5.1.</span> <span class="toc-text">1.应用层</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#2-Kernel-%E5%B1%82"><span class="toc-number">1.5.2.</span> <span class="toc-text">2.Kernel 层</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#3-%E4%BC%98%E5%8C%96%E9%AA%8C%E8%AF%81"><span class="toc-number">1.5.3.</span> <span class="toc-text">3.优化验证</span></a></li></ol></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E5%85%AD%E3%80%81%E6%97%A7%E5%B7%A5%E5%85%B7%E9%99%84%E5%BD%95"><span class="toc-number">1.6.</span> <span class="toc-text">六、旧工具附录</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E4%B8%83%E3%80%81%E6%80%BB%E7%BB%93"><span class="toc-number">1.7.</span> <span class="toc-text">七、总结</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E5%8F%82%E8%80%83%E8%B5%84%E6%96%99"><span class="toc-number">1.8.</span> <span class="toc-text">参考资料</span></a></li></ol></li></ol></div></div><div class="card-widget card-recent-post"><div class="item-headline"><i class="anzhiyufont anzhiyu-icon-history"></i><span>最近发布</span></div><div class="aside-list"><div class="aside-list-item no-cover"><div class="content"><a class="title" href="/2026/09/16/LLM/%E5%8D%B7%E7%A7%AF/" title="卷积">卷积</a><time datetime="2026-09-16T16:00:00.000Z" title="发表于 2026-09-17 00:00:00">2026-09-17</time></div></div><div class="aside-list-item no-cover"><div class="content"><a class="title" href="/2026/09/16/LLM/%E6%80%A7%E8%83%BD%E5%89%96%E6%9E%90/" title="性能剖析">性能剖析</a><time datetime="2026-09-16T16:00:00.000Z" title="发表于 2026-09-17 00:00:00">2026-09-17</time></div></div><div class="aside-list-item no-cover"><div class="content"><a class="title" href="/2026/09/15/LLM/%E6%80%A7%E8%83%BD%E8%80%83%E9%87%8F/" title="性能考量">性能考量</a><time datetime="2026-09-15T16:00:00.000Z" title="发表于 2026-09-16 00:00:00">2026-09-16</time></div></div><div class="aside-list-item no-cover"><div class="content"><a class="title" href="/2026/07/05/LLM/elementwise-study-notes/" title="elementwisse-study-notes">elementwisse-study-notes</a><time datetime="2026-07-05T16:00:00.000Z" title="发表于 2026-07-06 00:00:00">2026-07-06</time></div></div><div class="aside-list-item no-cover"><div class="content"><a class="title" href="/2026/06/03/LLM/%E5%A4%9A%E7%BB%B4%E7%BD%91%E6%A0%BC%E4%B8%8E%E6%95%B0%E6%8D%AE/" title="多维网格与数据">多维网格与数据</a><time datetime="2026-06-03T16:00:00.000Z" title="发表于 2026-06-04 00:00:00">2026-06-04</time></div></div></div></div></div></div></div></main><footer id="footer"><div id="footer-wrap"><div class="copyright">&copy;2025 - 2026 By ub-w</div></div></footer></div><div id="sidebar"><div id="menu-mask"></div><div id="sidebar-menus"><div class="sidebar-site-data site-data is-center"><a href="/archives/" title="archive"><div class="headline">文章</div><div class="length-num">28</div></a><a href="/tags/" title="tag"><div class="headline">标签</div><div class="length-num">7</div></a><a href="/categories/" title="category"><div class="headline">分类</div><div class="length-num">3</div></a></div><div class="back-menu-list-groups"><div class="back-menu-list-group"><div class="back-menu-list-title">网页</div><div class="back-menu-list"><a class="back-menu-item" target="_blank" rel="noopener" href="https://hexo.anheyu.com/" title="博客"><img class="back-menu-item-icon" src= "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7" onerror="this.onerror=null,this.src=&quot;/img/404.jpg&quot;" data-lazy-src="/img/favicon.ico" alt="博客"/><span class="back-menu-item-text">博客</span></a></div></div><div class="back-menu-list-group"><div class="back-menu-list-title">项目</div><div class="back-menu-list"><a class="back-menu-item" target="_blank" rel="noopener" href="https://image.anheyu.com/" title="安知鱼图床"><img class="back-menu-item-icon" src= "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7" onerror="this.onerror=null,this.src=&quot;/img/404.jpg&quot;" data-lazy-src="https://image.anheyu.com/favicon.ico" alt="安知鱼图床"/><span class="back-menu-item-text">安知鱼图床</span></a></div></div></div><span class="sidebar-menu-item-title">标签</span><div class="card-tags"><div class="item-headline"></div><div class="card-tag-cloud"><a href="/tags/HDLbits/" style="font-size: 0.88rem;">HDLbits<sup>6</sup></a><a href="/tags/IC%E8%AE%BE%E8%AE%A1%E5%85%A5%E9%97%A8/" style="font-size: 0.88rem;">IC设计入门<sup>2</sup></a><a href="/tags/SystemVerilog%E9%AA%8C%E8%AF%81/" style="font-size: 0.88rem;">SystemVerilog验证<sup>6</sup></a><a href="/tags/cuda/" style="font-size: 0.88rem;">cuda<sup>6</sup></a><a href="/tags/leetcode/" style="font-size: 0.88rem;">leetcode<sup>1</sup></a><a href="/tags/%E5%9F%BA%E7%A1%80/" style="font-size: 0.88rem;">基础<sup>5</sup></a><a href="/tags/%E5%B7%A5%E5%85%B7/" style="font-size: 0.88rem;">工具<sup>2</sup></a></div></div><hr/></div></div><div id="rightside"><div id="rightside-config-hide"><button id="readmode" type="button" title="阅读模式"><i class="anzhiyufont anzhiyu-icon-book-open"></i></button><button id="translateLink" type="button" title="简繁转换">繁</button><button id="hide-aside-btn" type="button" title="单栏和双栏切换"><i class="anzhiyufont anzhiyu-icon-arrows-left-right"></i></button></div><div id="rightside-config-show"><button id="rightside-config" type="button" title="设置"><i class="anzhiyufont anzhiyu-icon-gear"></i></button><button class="close" id="mobile-toc-button" type="button" title="目录"><i class="anzhiyufont anzhiyu-icon-list-ul"></i></button><button id="go-up" type="button" title="回到顶部"><i class="anzhiyufont anzhiyu-icon-arrow-up"></i></button></div></div><div id="nav-music"><a id="nav-music-hoverTips" onclick="anzhiyu.musicToggle()" accesskey="m">播放音乐</a><div id="console-music-bg"></div><meting-js id="2626167512" server="tencent" type="playlist" mutex="true" preload="none" theme="var(--anzhiyu-main)" data-lrctype="0" order="random" volume="0.7"></meting-js></div><div id="rightMenu"><div class="rightMenu-group rightMenu-small"><div class="rightMenu-item" id="menu-backward"><i class="anzhiyufont anzhiyu-icon-arrow-left"></i></div><div class="rightMenu-item" id="menu-forward"><i class="anzhiyufont anzhiyu-icon-arrow-right"></i></div><div class="rightMenu-item" id="menu-refresh"><i class="anzhiyufont anzhiyu-icon-arrow-rotate-right" style="font-size: 1rem;"></i></div><div class="rightMenu-item" id="menu-top"><i class="anzhiyufont anzhiyu-icon-arrow-up"></i></div></div><div class="rightMenu-group rightMenu-line rightMenuPlugin"><div class="rightMenu-item" id="menu-copytext"><i class="anzhiyufont anzhiyu-icon-copy"></i><span>复制选中文本</span></div><div class="rightMenu-item" id="menu-pastetext"><i class="anzhiyufont anzhiyu-icon-paste"></i><span>粘贴文本</span></div><a class="rightMenu-item" id="menu-commenttext"><i class="anzhiyufont anzhiyu-icon-comment-medical"></i><span>引用到评论</span></a><div class="rightMenu-item" id="menu-newwindow"><i class="anzhiyufont anzhiyu-icon-window-restore"></i><span>新窗口打开</span></div><div class="rightMenu-item" id="menu-copylink"><i class="anzhiyufont anzhiyu-icon-link"></i><span>复制链接地址</span></div><div class="rightMenu-item" id="menu-copyimg"><i class="anzhiyufont anzhiyu-icon-images"></i><span>复制此图片</span></div><div class="rightMenu-item" id="menu-downloadimg"><i class="anzhiyufont anzhiyu-icon-download"></i><span>下载此图片</span></div><div class="rightMenu-item" id="menu-newwindowimg"><i class="anzhiyufont anzhiyu-icon-window-restore"></i><span>新窗口打开图片</span></div><div class="rightMenu-item" id="menu-search"><i class="anzhiyufont anzhiyu-icon-magnifying-glass"></i><span>站内搜索</span></div><div class="rightMenu-item" id="menu-searchBaidu"><i class="anzhiyufont anzhiyu-icon-magnifying-glass"></i><span>百度搜索</span></div><div class="rightMenu-item" id="menu-music-toggle"><i class="anzhiyufont anzhiyu-icon-play"></i><span>播放音乐</span></div><div class="rightMenu-item" id="menu-music-back"><i class="anzhiyufont anzhiyu-icon-backward"></i><span>切换到上一首</span></div><div class="rightMenu-item" id="menu-music-forward"><i class="anzhiyufont anzhiyu-icon-forward"></i><span>切换到下一首</span></div><div class="rightMenu-item" id="menu-music-playlist" onclick="window.open(&quot;https://y.qq.com/n/ryqq_v2/playlist/2626167512&quot;, &quot;_blank&quot;);" style="display: none;"><i class="anzhiyufont anzhiyu-icon-radio"></i><span>查看所有歌曲</span></div><div class="rightMenu-item" id="menu-music-copyMusicName"><i class="anzhiyufont anzhiyu-icon-copy"></i><span>复制歌名</span></div></div><div class="rightMenu-group rightMenu-line rightMenuOther"><a class="rightMenu-item menu-link" id="menu-randomPost"><i class="anzhiyufont anzhiyu-icon-shuffle"></i><span>随便逛逛</span></a><a class="rightMenu-item menu-link" href="/categories/"><i class="anzhiyufont anzhiyu-icon-cube"></i><span>博客分类</span></a><a class="rightMenu-item menu-link" href="/tags/"><i class="anzhiyufont anzhiyu-icon-tags"></i><span>文章标签</span></a></div><div class="rightMenu-group rightMenu-line rightMenuOther"><a class="rightMenu-item" id="menu-copy" href="javascript:void(0);"><i class="anzhiyufont anzhiyu-icon-copy"></i><span>复制地址</span></a><a class="rightMenu-item" id="menu-commentBarrage" href="javascript:void(0);"><i class="anzhiyufont anzhiyu-icon-message"></i><span class="menu-commentBarrage-text">关闭热评</span></a><a class="rightMenu-item" id="menu-darkmode" href="javascript:void(0);"><i class="anzhiyufont anzhiyu-icon-circle-half-stroke"></i><span class="menu-darkmode-text">深色模式</span></a><a class="rightMenu-item" id="menu-translate" href="javascript:void(0);"><i class="anzhiyufont anzhiyu-icon-language"></i><span>轉為繁體</span></a></div></div><div id="rightmenu-mask"></div><div><script src="/js/utils.js"></script><script src="/js/main.js"></script><script src="/js/tw_cn.js"></script><script src="https://cdn.cbd.int/@fancyapps/ui@5.0.28/dist/fancybox/fancybox.umd.js"></script><script src="https://cdn.cbd.int/instant.page@5.2.0/instantpage.js" type="module"></script><script src="https://cdn.cbd.int/vanilla-lazyload@17.8.5/dist/lazyload.iife.min.js"></script><script src="https://cdn.cbd.int/node-snackbar@0.1.16/dist/snackbar.min.js"></script><canvas id="universe"></canvas><script async src="https://npm.elemecdn.com/anzhiyu-theme-static@1.0.0/dark/dark.js"></script><script>// 消除控制台打印
+var HoldLog = console.log;
+console.log = function () {};
+let now1 = new Date();
+queueMicrotask(() => {
+  const Log = function () {
+    HoldLog.apply(console, arguments);
+  }; //在恢复前输出日志
+  const grt = new Date("11/29/2025 00:00:00"); //此处修改你的建站时间或者网站上线时间
+  now1.setTime(now1.getTime() + 250);
+  const days = (now1 - grt) / 1000 / 60 / 60 / 24;
+  const dnum = Math.floor(days);
+  const ascll = [
+    `欢迎使用安知鱼!`,
+    `生活明朗, 万物可爱`,
+    `
+        
+       █████╗ ███╗   ██╗███████╗██╗  ██╗██╗██╗   ██╗██╗   ██╗
+      ██╔══██╗████╗  ██║╚══███╔╝██║  ██║██║╚██╗ ██╔╝██║   ██║
+      ███████║██╔██╗ ██║  ███╔╝ ███████║██║ ╚████╔╝ ██║   ██║
+      ██╔══██║██║╚██╗██║ ███╔╝  ██╔══██║██║  ╚██╔╝  ██║   ██║
+      ██║  ██║██║ ╚████║███████╗██║  ██║██║   ██║   ╚██████╔╝
+      ╚═╝  ╚═╝╚═╝  ╚═══╝╚══════╝╚═╝  ╚═╝╚═╝   ╚═╝    ╚═════╝
+        
+        `,
+    "已上线",
+    dnum,
+    "天",
+    "©2025 By 安知鱼 V1.6.15",
+  ];
+  const ascll2 = [`NCC2-036`, `调用前置摄像头拍照成功，识别为【小笨蛋】.`, `Photo captured: `, `🤪`];
+
+  setTimeout(
+    Log.bind(
+      console,
+      `\n%c${ascll[0]} %c ${ascll[1]} %c ${ascll[2]} %c${ascll[3]}%c ${ascll[4]}%c ${ascll[5]}\n\n%c ${ascll[6]}\n`,
+      "color:#425AEF",
+      "",
+      "color:#425AEF",
+      "color:#425AEF",
+      "",
+      "color:#425AEF",
+      ""
+    )
+  );
+  setTimeout(
+    Log.bind(
+      console,
+      `%c ${ascll2[0]} %c ${ascll2[1]} %c \n${ascll2[2]} %c\n${ascll2[3]}\n`,
+      "color:white; background-color:#4fd953",
+      "",
+      "",
+      'background:url("https://npm.elemecdn.com/anzhiyu-blog@1.1.6/img/post/common/tinggge.gif") no-repeat;font-size:450%'
+    )
+  );
+
+  setTimeout(Log.bind(console, "%c WELCOME %c 你好，小笨蛋.", "color:white; background-color:#4f90d9", ""));
+
+  setTimeout(
+    console.warn.bind(
+      console,
+      "%c ⚡ Powered by 安知鱼 %c 你正在访问 ub-w 的博客.",
+      "color:white; background-color:#f0ad4e",
+      ""
+    )
+  );
+
+  setTimeout(Log.bind(console, "%c W23-12 %c 你已打开控制台.", "color:white; background-color:#4f90d9", ""));
+
+  setTimeout(
+    console.warn.bind(console, "%c S013-782 %c 你现在正处于监控中.", "color:white; background-color:#d9534f", "")
+  );
+});</script><script async src="/anzhiyu/random.js"></script><div class="js-pjax"><input type="hidden" name="page-type" id="page-type" value="post"></div><script async data-pjax src="https://npm.elemecdn.com/anzhiyu-theme-static@1.0.1/bubble/bubble.js"></script><script>var visitorMail = "";
+</script><script async data-pjax src="https://cdn.cbd.int/anzhiyu-theme-static@1.0.0/waterfall/waterfall.js"></script><script src="https://cdn.cbd.int/qrcodejs@1.0.0/qrcode.min.js"></script><link rel="stylesheet" href="https://cdn.cbd.int/anzhiyu-theme-static@1.1.9/icon/ali_iconfont_css.css"><script src="/js/music-controls.js" data-pjax></script><script id="canvas_nest" defer="defer" color="82,92,122" opacity="0.35" zIndex="-1" count="66" mobile="false" src="https://cdn.cbd.int/butterfly-extsrc@1.1.3/dist/canvas-nest.min.js"></script><link rel="stylesheet" href="https://cdn.cbd.int/anzhiyu-theme-static@1.0.0/aplayer/APlayer.min.css" media="print" onload="this.media='all'"><script src="https://cdn.cbd.int/anzhiyu-blog-static@1.0.1/js/APlayer.min.js"></script><script src="https://cdn.cbd.int/hexo-anzhiyu-music@1.0.1/assets/js/Meting2.min.js"></script><script src="https://cdn.cbd.int/pjax@0.2.8/pjax.min.js"></script><script>let pjaxSelectors = ["head > title","#config-diff","#body-wrap","#rightside-config-hide","#rightside-config-show",".js-pjax"]
+var pjax = new Pjax({
+  elements: 'a:not([target="_blank"])',
+  selectors: pjaxSelectors,
+  cacheBust: false,
+  analytics: false,
+  scrollRestoration: false
+})
+
+document.addEventListener('pjax:send', function () {
+  // removeEventListener scroll 
+  anzhiyu.removeGlobalFnEvent('pjax')
+  anzhiyu.removeGlobalFnEvent('themeChange')
+
+  document.getElementById('rightside').classList.remove('rightside-show')
+  
+  if (window.aplayers) {
+    for (let i = 0; i < window.aplayers.length; i++) {
+      if (!window.aplayers[i].options.fixed) {
+        window.aplayers[i].destroy()
+      }
+    }
+  }
+
+  typeof typed === 'object' && typed.destroy()
+
+  //reset readmode
+  const $bodyClassList = document.body.classList
+  $bodyClassList.contains('read-mode') && $bodyClassList.remove('read-mode')
+})
+
+document.addEventListener('pjax:complete', function () {
+  window.refreshFn()
+
+  document.querySelectorAll('script[data-pjax]').forEach(item => {
+    const newScript = document.createElement('script')
+    const content = item.text || item.textContent || item.innerHTML || ""
+    Array.from(item.attributes).forEach(attr => newScript.setAttribute(attr.name, attr.value))
+    newScript.appendChild(document.createTextNode(content))
+    item.parentNode.replaceChild(newScript, item)
+  })
+
+  GLOBAL_CONFIG.islazyload && window.lazyLoadInstance.update()
+
+  typeof panguInit === 'function' && panguInit()
+
+  // google analytics
+  typeof gtag === 'function' && gtag('config', '', {'page_path': window.location.pathname});
+
+  // baidu analytics
+  typeof _hmt === 'object' && _hmt.push(['_trackPageview',window.location.pathname]);
+
+  typeof loadMeting === 'function' && document.getElementsByClassName('aplayer').length && loadMeting()
+
+  // prismjs
+  typeof Prism === 'object' && Prism.highlightAll()
+})
+
+document.addEventListener('pjax:error', e => {
+  if (e.request.status === 404) {
+    pjax.loadUrl('/404.html')
+  }
+})</script><script charset="UTF-8" src="https://cdn.cbd.int/anzhiyu-theme-static@1.1.5/accesskey/accesskey.js"></script></div><div id="popup-window"><div class="popup-window-title">通知</div><div class="popup-window-divider"></div><div class="popup-window-content"><div class="popup-tip">你好呀</div><div class="popup-link"><i class="anzhiyufont anzhiyu-icon-arrow-circle-right"></i></div></div></div></body></html>
